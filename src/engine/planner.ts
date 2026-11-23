@@ -33,7 +33,8 @@ export interface Plan {
 const LOCAL_LANG: Record<string, string> = {
   NL: 'nl', BE: 'nl', FR: 'fr', LU: 'fr', MC: 'fr', DE: 'de', AT: 'de', CH: 'de', ES: 'es', IT: 'it', PT: 'pt', PL: 'pl', CZ: 'cs', DK: 'da', SE: 'sv', NO: 'no',
 };
-const TILE_CACHE_VERSION = 'v2';
+// À changer dès que l'extraction des spots change : les tuiles déjà analysées sont réanalysées.
+const TILE_CACHE_VERSION = 'v3';
 const ALL_ON: Prefs = { nature: true, patrimoine: true, vue: true, urbain: true };
 
 export type PrepStep = 1 | 2 | 3 | 4;

@@ -176,6 +176,14 @@ const WALKABLE = new Set(['path', 'minor', 'service', 'track', 'tertiary', 'livi
 const BRIDGE_CLASSES = new Set(['path', 'minor', 'service', 'tertiary', 'secondary', 'primary', 'bridge', 'pedestrian', 'living_street', 'track']);
 /** Un vrai nom de pont (« Sint Servaasbrug », « Pont Neuf »), pas la rue qui y mène (« Brugstraat »). */
 const BRIDGE_NAME = /(brug|bridge|brücke|brucke)$|^(pont|puente|ponte|pons)\b/i;
+/** Prestataires (bateaux, visites guidées, location…) : des points d'intérêt OSM, pas des lieux à voir. */
+const OPERATOR =
+  /rederij|rondvaart|boottocht|sightseeing|excursion|escape ?room|hop.on|city ?sights|(free|city|walking|bike|boat|bus|segway|food|f\(r\)ee)[ -]?tours?\b|\btours? (by|operator)|visites? guidées?|guided tours?|verhuur|rental|location de (vélos?|bateaux?)|reisbureau|office de tourisme|tourist ?info|\bvvv\b/i;
+
+export function isOperator(name: string): boolean {
+  return OPERATOR.test(name);
+}
+
 /** Noms génériques : ne comptent pas comme doublons entre eux. */
 export const GENERIC_NAME = /^(point de vue|belvédère|coin de verdure|sous-bois|place piétonne|au bord de l'eau|pont)$/i;
 
@@ -221,6 +229,7 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
     const cls = str(f.props.class);
     const sub = str(f.props.subclass);
     const { name, alt } = names(f.props);
+    if (isOperator(`${name} ${alt ?? ''}`)) continue;
     const rule = poiRule(cls, sub, `${name} ${alt ?? ''}`);
     if (!rule || (rule.needName && !name)) continue;
     if (rule.kind === 'park' || rule.kind === 'garden') {
@@ -488,7 +497,7 @@ export function enrichWithWiki(spots: Spot[], articles: Article[], creationLangs
       langsBySpot.set(s.id, set);
       continue;
     }
-    if (!creationLangs.includes(a.lang) || !CREATE_TYPES.has(a.type ?? '') || SKIP_TITLE.test(a.title) || NOT_A_PLACE.test(a.title) || PLACE_COMMA.test(a.title)) continue;
+    if (!creationLangs.includes(a.lang) || !CREATE_TYPES.has(a.type ?? '') || SKIP_TITLE.test(a.title) || NOT_A_PLACE.test(a.title) || PLACE_COMMA.test(a.title) || isOperator(a.title)) continue;
     // Un article sur un objet dans une église ou un musée déjà repéré : le lieu suffit.
     if (grid.within(a.coord, 40).some(({ data }) => WEAK_KINDS.has(data.kind))) continue;
     const name = a.title.replace(/\s*\(.*\)\s*$/, '');
