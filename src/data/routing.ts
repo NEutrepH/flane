@@ -52,9 +52,9 @@ const OSRM_PROFILE: Record<Mode, [string, string]> = { walk: ['routed-foot', 'fo
 export const SPEED: Record<Mode, number> = { walk: 1.38, bike: 4.3 };
 /**
  * Points de passage au plus entre départ et arrivée (un pont, une rue ou une berge en compte deux).
- * Au-delà de 8, l'itinéraire est demandé en deux morceaux (limite Valhalla : 10 points par demande).
+ * Au-delà de 8, l'itinéraire est demandé en plusieurs morceaux (limite Valhalla : 10 points par demande).
  */
-export const MAX_STOPS = 14;
+export const MAX_STOPS = 18;
 
 // Même réglage pour le trajet le plus court et la balade : ce sont les spots qui font passer par les
 // beaux coins. Favoriser les allées piétonnes fait zigzaguer entre trottoirs et rue (instructions

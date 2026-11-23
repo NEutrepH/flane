@@ -240,7 +240,7 @@ export class Planner {
     // Un spot au pied du départ ou de l'arrivée n'apporte rien (on y passe de toute façon) et force
     // un aller-retour en fin de balade ; il reste annoncé « en chemin ».
     const sorted = [...spots]
-      .filter((s) => haversine(s.coord, this.dest) > 120 && haversine(s.coord, this.origin) > 80)
+      .filter((s) => haversine(s.coord, this.dest) > 160 && haversine(s.coord, this.origin) > 80)
       .sort((a, b) => b.score - a.score);
     const detour = new Map(sorted.map((s) => [s.id, (haversine(this.origin, s.coord) + haversine(s.coord, this.dest) - this.ab) / dMax]));
     const chosen: Spot[] = [];
@@ -318,6 +318,7 @@ export class Planner {
       iterations: 14,
       xy: this.xy,
       reversalWeight: this.reversalWeight,
+      timeBonus: this.mode === 'walk' ? 0.003 : 0.0015,
     });
     this.sols.set(target, sol);
     return sol;
@@ -373,7 +374,7 @@ export class Planner {
       const rep = this.repeated(route);
       tried.push({ order: sol.order, route, repeated: rep.length, predicted: sol.time });
       const durOk = Math.abs(route.duration - target) <= tol;
-      const repOk = rep.length <= Math.max(50, route.distance * 0.03);
+      const repOk = rep.length <= Math.max(40, route.distance * 0.02);
       if (durOk && repOk) break;
       let changed = false;
       if (!durOk && sol.time > 0) {

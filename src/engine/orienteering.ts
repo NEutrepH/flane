@@ -29,6 +29,8 @@ export interface OPInput {
   xy?: Array<[number, number]>;
   /** beauté perdue par mètre refait en sens inverse (0 : on ignore les demi-tours) */
   reversalWeight?: number;
+  /** petit bonus par seconde utilisée : à beauté presque égale, on préfère la balade qui remplit le temps demandé */
+  timeBonus?: number;
 }
 
 export interface OPSolution {
@@ -203,7 +205,7 @@ function greedyFill(start: number[], inp: OPInput, ev: Evaluate, rnd: (() => num
       const next = [...cur.order];
       next.splice(scr.pos, 0, c);
       const e = ev(next);
-      const dv = e.value - cur.value;
+      const dv = e.value - cur.value + (inp.timeBonus ?? 0) * (e.time - cur.time);
       if (e.time > budget || dv <= 0) continue;
       options.push({ c, e, ratio: dv / (Math.max(0, e.time - cur.time) + 45) });
     }
@@ -284,7 +286,8 @@ function swapImprove(order: number[], inp: OPInput, ev: Evaluate): number[] {
         const next = [...base.order];
         next.splice(scr.pos, 0, c);
         const e = ev(next);
-        if (e.time <= budget && e.value > cur.value + 1e-6) {
+        const gain = e.value - cur.value + (inp.timeBonus ?? 0) * (e.time - cur.time);
+        if (e.time <= budget && gain > 1e-6) {
           cur = e;
           improved = true;
           break;
@@ -309,7 +312,10 @@ export function solveOP(inp: OPInput): OPSolution {
     x = twoOpt(x, inp, ev);
     return greedyFill(x, inp, ev, null);
   };
-  const beats = (a: OPSolution, b: OPSolution) => a.value > b.value + 1e-6 || (Math.abs(a.value - b.value) <= 1e-6 && a.time < b.time);
+  // Comparaison des solutions complètes : la beauté, plus un petit bonus pour le temps utilisé
+  // (la durée demandée fait partie du contrat). L'ordre de passage, lui, reste optimisé au plus court.
+  const score = (s: OPSolution) => s.value + (inp.timeBonus ?? 0) * s.time;
+  const beats = (a: OPSolution, b: OPSolution) => score(a) > score(b) + 1e-6 || (Math.abs(score(a) - score(b)) <= 1e-6 && a.time < b.time);
 
   let warm: OPSolution | null = null;
   const init = [...new Set(inp.init ?? [])].filter((i) => i >= 0 && i < items.length && items[i].value > 0);
@@ -321,7 +327,8 @@ export function solveOP(inp: OPInput): OPSolution {
     const s = ev(polish(greedyFill([], inp, ev, it === 0 ? null : rnd)));
     if (beats(s, best)) best = s;
   }
-  // Stabilité : si la solution prolongée vaut presque autant, on la garde (le trajet « grandit » au lieu de sauter).
-  if (warm && warm.value >= best.value * 0.97) return warm;
+  // Stabilité : si la solution prolongée vaut presque autant et remplit le temps, on la garde
+  // (le trajet « grandit » au lieu de sauter).
+  if (warm && warm.time >= budget * 0.9 && score(warm) >= score(best) * 0.97) return warm;
   return best;
 }
