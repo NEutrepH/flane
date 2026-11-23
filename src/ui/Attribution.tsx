@@ -13,7 +13,7 @@ export function Attribution() {
       <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
         © contributeurs OpenStreetMap
       </a>{' '}
-      · Wikipédia
+      · Wikipédia · <span className="attrib__build">v. {__BUILD__}</span>
     </p>
   );
 }

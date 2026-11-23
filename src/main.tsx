@@ -16,9 +16,11 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-// Hors-ligne une fois installée (pas en local, pour ne jamais servir de vieux fichiers pendant le dev).
-if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+// Hors-ligne une fois installée. Pas en local (pour ne jamais servir de vieux fichiers pendant le dev),
+// sauf avec ?sw dans l'adresse pour le tester.
+const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+if ('serviceWorker' in navigator && (!local || new URLSearchParams(location.search).has('sw'))) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {});
   });
 }

@@ -956,6 +956,10 @@ input {
   color: inherit;
 }
 
+.attrib__build {
+  white-space: nowrap;
+}
+
 /* ============ Navigation ============ */
 
 .navtop {
