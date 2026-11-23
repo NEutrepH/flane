@@ -33,10 +33,14 @@ HTTPS : pour essayer dehors, il faut la mettre en ligne (GitHub Pages par exempl
    - Wikimedia Commons : nombre de photos prises autour des 12 meilleurs candidats (signal de beauté).
 3. **Matrice des temps** entre ~30 candidats : OSRM (repli Valhalla, puis estimation).
 4. **Choix des étapes** (`src/engine/orienteering.ts`) : problème de course d'orientation résolu par
-   GRASP + 2-opt + échanges, avec rendements décroissants (pas trois églises d'affilée). Chaque durée
-   part de la solution de la durée précédente : en glissant la règle, la balade grandit au lieu de sauter.
-5. **Itinéraire réel** par Valhalla (8 étapes au plus) ; si la durée réelle s'écarte de la demande,
-   la matrice est recalée et le calcul relancé.
+   GRASP + 2-opt + échanges, avec rendements décroissants (pas trois églises d'affilée). Les ponts, rues
+   piétonnes et berges sont des tronçons à deux bouts : on traverse le pont, on longe la berge, dans le
+   sens qui enchaîne le mieux. Repartir vers d'où l'on vient coûte de la beauté. Chaque durée part de la
+   solution d'une durée voisine : en glissant la règle, la balade grandit au lieu de sauter.
+5. **Itinéraire réel** par Valhalla (14 points de passage, en deux demandes au-delà de 8). On mesure sur
+   le vrai tracé les bouts de rue parcourus deux fois : le spot au bout d'un aller-retour est déprécié (et
+   retenu 60 jours) et le calcul relancé ; si la durée s'écarte, la matrice est recalée. Mesure en vrai :
+   `LIVE=1 npx vitest run tests/backtrack.live.test.ts`.
 6. **Navigation** (`src/engine/navigation.ts`) : position sur le tracé, prochaine instruction, temps
    restant, sortie de route (recalcul), spots « tamponnés » au passage, voix optionnelle.
 

@@ -1,7 +1,7 @@
 // Itinéraires et matrices de temps.
 // - Itinéraire : Valhalla (instructions en français, 10 points max), repli OSRM.
 // - Matrice : OSRM (jusqu'à ~60 points), repli Valhalla par morceaux de 100 paires, puis estimation.
-import { cumulative, decodePolyline, haversine, type LngLat } from '../lib/geo';
+import { bearing, cumulative, decodePolyline, haversine, pointAt, type LngLat } from '../lib/geo';
 import { fetchJSON, isAbort, pool, postJSON } from '../lib/http';
 
 export type Mode = 'walk' | 'bike';
@@ -50,8 +50,11 @@ const OSRM_PROFILE: Record<Mode, [string, string]> = { walk: ['routed-foot', 'fo
 
 /** Vitesses moyennes (m/s) pour les estimations et l'aperçu. */
 export const SPEED: Record<Mode, number> = { walk: 1.38, bike: 4.3 };
-/** Nombre maximum d'étapes intermédiaires par itinéraire (limite du serveur Valhalla : 10 points). */
-export const MAX_STOPS = 8;
+/**
+ * Points de passage au plus entre départ et arrivée (un pont, une rue ou une berge en compte deux).
+ * Au-delà de 8, l'itinéraire est demandé en deux morceaux (limite Valhalla : 10 points par demande).
+ */
+export const MAX_STOPS = 14;
 
 // Même réglage pour le trajet le plus court et la balade : ce sont les spots qui font passer par les
 // beaux coins. Favoriser les allées piétonnes fait zigzaguer entre trottoirs et rue (instructions
@@ -128,13 +131,79 @@ interface ValhallaRoute {
   trip: { summary: { time: number; length: number }; legs: Array<{ shape: string; maneuvers: ValhallaManeuver[] }> };
 }
 
-async function valhallaRoute(points: LngLat[], mode: Mode, signal?: AbortSignal): Promise<Route> {
+/** Étape d'un itinéraire : un point, ou un spot devant lequel il suffit de passer (à `radius` mètres près). */
+export interface Waypoint {
+  coord: LngLat;
+  radius?: number;
+}
+export type RoutePoint = LngLat | Waypoint;
+const coordOf = (p: RoutePoint): LngLat => (Array.isArray(p) ? p : p.coord);
+
+interface PassOpts {
+  /** il suffit de passer à `radius` mètres des étapes (n'importe quelle rue proche convient) */
+  passBy: boolean;
+  /** pas de demi-tour sur les étapes */
+  noUturn: boolean;
+}
+
+/** Le serveur Valhalla gratuit accepte 10 points par itinéraire : au-delà, on découpe. */
+const VALHALLA_MAX_POINTS = 10;
+
+/** Itinéraire Valhalla de n'importe quelle longueur : morceaux de 10 points raccordés dans le sens de la marche. */
+async function valhallaLong(points: RoutePoint[], mode: Mode, opts: PassOpts, signal?: AbortSignal): Promise<Route> {
+  if (points.length <= VALHALLA_MAX_POINTS) return valhallaRoute(points, mode, opts, signal);
+  const parts: Route[] = [];
+  let heading: number | undefined;
+  for (let start = 0; start < points.length - 1; start += VALHALLA_MAX_POINTS - 1) {
+    const end = Math.min(points.length - 1, start + VALHALLA_MAX_POINTS - 1);
+    // Les points de raccord sont exacts (même rue dans les deux morceaux) ; le second morceau repart
+    // dans la direction d'arrivée du premier pour ne pas faire demi-tour au raccord.
+    const chunk = points.slice(start, end + 1).map((p, i, arr) => (i === 0 || i === arr.length - 1 ? coordOf(p) : p));
+    const r = await valhallaRoute(chunk, mode, opts, signal, heading);
+    parts.push(r);
+    const total = r.cum[r.cum.length - 1] ?? 0;
+    heading = r.coords.length >= 2 ? bearing(pointAt(r.coords, r.cum, Math.max(0, total - 20)).point, r.coords[r.coords.length - 1]) : undefined;
+  }
+  return mergeRoutes(parts);
+}
+
+function mergeRoutes(parts: Route[]): Route {
+  const coords: LngLat[] = [];
+  const maneuvers: Maneuver[] = [];
+  let duration = 0;
+  let distance = 0;
+  parts.forEach((r, pi) => {
+    const offset = coords.length ? coords.length - 1 : 0;
+    coords.push(...(coords.length ? r.coords.slice(1) : r.coords));
+    r.maneuvers.forEach((m, mi) => {
+      if (pi < parts.length - 1 && mi === r.maneuvers.length - 1 && m.turn === 'arrive') return;
+      if (pi > 0 && mi === 0 && m.turn === 'depart') return;
+      maneuvers.push({ ...m, begin: m.begin + offset, end: m.end + offset });
+    });
+    duration += r.duration;
+    distance += r.distance;
+  });
+  return { coords, cum: cumulative(coords), duration, distance, maneuvers, engine: parts[0].engine };
+}
+
+async function valhallaRoute(points: RoutePoint[], mode: Mode, { passBy, noUturn }: PassOpts, signal?: AbortSignal, startHeading?: number): Promise<Route> {
   const body = {
-    locations: points.map((p, i) => ({
-      lon: +p[0].toFixed(6),
-      lat: +p[1].toFixed(6),
-      type: i === 0 || i === points.length - 1 ? 'break' : 'via',
-    })),
+    locations: points.map((p, i) => {
+      const [lon, lat] = coordOf(p);
+      const end = i === 0 || i === points.length - 1;
+      // Avec un rayon et sans classement des rues candidates, Valhalla prend la rue la plus commode
+      // à moins de `radius` mètres du spot. « through » interdit en plus le demi-tour sur l'étape.
+      const loc: Record<string, unknown> = { lon: +lon.toFixed(6), lat: +lat.toFixed(6), type: end ? 'break' : noUturn ? 'through' : 'via' };
+      if (!end && passBy && !Array.isArray(p) && p.radius) {
+        loc.radius = p.radius;
+        loc.rank_candidates = false;
+      }
+      if (i === 0 && startHeading !== undefined) {
+        loc.heading = Math.round(startHeading);
+        loc.heading_tolerance = 70;
+      }
+      return loc;
+    }),
     ...costing(mode),
     directions_options: { language: 'fr-FR', units: 'kilometers' },
   };
@@ -221,10 +290,13 @@ function oText(st: OsrmStep): string {
   return `Tournez ${MOD_FR[modifier] ?? ''}${on}.`;
 }
 
-async function osrmRoute(points: LngLat[], mode: Mode, signal?: AbortSignal): Promise<Route> {
+async function osrmRoute(points: RoutePoint[], mode: Mode, passBy: boolean, signal?: AbortSignal): Promise<Route> {
   const [svc, prof] = OSRM_PROFILE[mode];
-  const path = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(';');
-  const url = `${OSRM_HOST}/${svc}/route/v1/${prof}/${path}?overview=false&geometries=geojson&steps=true&continue_straight=false`;
+  const path = points
+    .map(coordOf)
+    .map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`)
+    .join(';');
+  const url = `${OSRM_HOST}/${svc}/route/v1/${prof}/${path}?overview=false&geometries=geojson&steps=true&continue_straight=${passBy}`;
   const j = await fetchJSON<{ code: string; message?: string; routes?: Array<{ duration: number; distance: number; legs: Array<{ steps: OsrmStep[] }> }> }>(
     url,
     { signal, timeout: 15000 },
@@ -246,14 +318,30 @@ async function osrmRoute(points: LngLat[], mode: Mode, signal?: AbortSignal): Pr
   return { coords, cum: cumulative(coords), duration: r.duration, distance: r.distance, maneuvers, engine: 'osrm' };
 }
 
-export async function getRoute(points: LngLat[], mode: Mode, opts: { scenic?: boolean; signal?: AbortSignal } = {}): Promise<Route> {
-  try {
-    return await valhallaRoute(points, mode, opts.signal);
-  } catch (e) {
-    if (isAbort(e)) throw e;
-    console.warn('[flane] Valhalla indisponible, repli OSRM', e);
-    return osrmRoute(points, mode, opts.signal);
+/**
+ * Itinéraire passant par les points dans l'ordre. `passBy` : il suffit de passer près des spots ;
+ * `noUturn` : sans demi-tour sur les étapes. Si le serveur refuse, on retombe sur un passage simple.
+ */
+export async function getRoute(
+  points: RoutePoint[],
+  mode: Mode,
+  opts: { passBy?: boolean; noUturn?: boolean; signal?: AbortSignal } = {},
+): Promise<Route> {
+  const multi = points.length > 2;
+  const tries: PassOpts[] = [{ passBy: multi && !!opts.passBy, noUturn: multi && !!opts.noUturn }];
+  if (tries[0].noUturn) tries.push({ passBy: tries[0].passBy, noUturn: false });
+  if (tries[0].passBy) tries.push({ passBy: false, noUturn: false });
+  let error: unknown;
+  for (const t of tries) {
+    try {
+      return await valhallaLong(points, mode, t, opts.signal);
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      error = error ?? e;
+    }
   }
+  console.warn('[flane] Valhalla indisponible, repli OSRM', error);
+  return osrmRoute(points, mode, multi && !!opts.noUturn, opts.signal);
 }
 
 // ---- Matrices de temps ----

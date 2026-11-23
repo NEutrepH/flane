@@ -35,6 +35,13 @@ export function registerMap(m: MLMap | null) {
   map = m;
 }
 
+/** Pour le débogage en développement : le planificateur en cours. */
+export const debug = {
+  get planner() {
+    return planner;
+  },
+};
+
 const nextFrame = (fn: () => void) => requestAnimationFrame(() => requestAnimationFrame(fn));
 
 // ---------- Petits messages ----------
@@ -400,7 +407,7 @@ async function reroute(from: LngLat) {
   toast('On recalcule ton chemin…', 2000);
   try {
     const remaining = plan.stops.filter((ps) => !guide!.isVisited(ps.spot.id)).map((ps) => ps.spot);
-    const route = await getRoute([from, ...remaining.map((s) => s.coord), p.dest], get().mode, { scenic: true });
+    const route = await getRoute([from, ...remaining.map((s) => p.waypoint(s)), p.dest], get().mode, { passBy: true });
     if (get().phase !== 'nav' || !guide) return;
     const next = p.decorate(route, remaining, plan.minutes, plan.scenic);
     guide = new Guide(route, [...next.stops, ...next.bonus], get().mode, guide.visitedIds);

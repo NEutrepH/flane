@@ -7,7 +7,6 @@ import {
   pointInRing,
   ringArea,
   ringCentroid,
-  samplePoints,
   SegmentGrid,
   tileBounds,
   lineLength,
@@ -66,6 +65,8 @@ export interface Spot {
   thumb?: string;
   extract?: string;
   link?: string;
+  /** spot qui se traverse (pont) ou se longe (rue piétonne, berge) : ses deux bouts */
+  ends?: [LngLat, LngLat];
 }
 
 export const CATEGORY_LABEL: Record<Category, string> = {
@@ -188,6 +189,30 @@ export function isOperator(name: string): boolean {
 export const GENERIC_NAME = /^(point de vue|belvédère|coin de verdure|sous-bois|place piétonne|au bord de l'eau|pont)$/i;
 
 const spotId = (kind: SpotKind, c: LngLat) => `${kind}:${c[0].toFixed(5)},${c[1].toFixed(5)}`;
+
+/** Bout de ligne de part et d'autre de la distance `d` (± `half` m) ; rien si c'est trop court pour « se longer ». */
+function segmentAround(line: LngLat[], cum: number[], d: number, half: number): [LngLat, LngLat] | undefined {
+  const len = cum[cum.length - 1];
+  const a = pointAt(line, cum, Math.max(0, d - half)).point;
+  const b = pointAt(line, cum, Math.min(len, d + half)).point;
+  return haversine(a, b) >= 40 ? [a, b] : undefined;
+}
+
+/** Les deux points les plus éloignés d'un contour (les deux bouts d'un pont dessiné en surface). */
+function farthestPair(ring: LngLat[]): [LngLat, LngLat] {
+  let best: [LngLat, LngLat] = [ring[0], ring[0]];
+  let max = -1;
+  for (let i = 0; i < ring.length; i++) {
+    for (let j = i + 1; j < ring.length; j++) {
+      const d = haversine(ring[i], ring[j]);
+      if (d > max) {
+        max = d;
+        best = [ring[i], ring[j]];
+      }
+    }
+  }
+  return best;
+}
 
 /** Garde le meilleur spot (par `base`) dans chaque rayon, en ne comparant que des spots de même nature. */
 export function thin(spots: Spot[], radius: number, max = Infinity): Spot[] {
@@ -325,13 +350,22 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
     if (f.props.brunnel || !f.lines) continue;
     const isPath = f.props.class === 'path' || f.props.class === 'track';
     for (const line of f.lines) {
-      for (const pt of samplePoints(line, 90)) {
+      const cum = cumulative(line);
+      const len = cum[cum.length - 1];
+      if (!(len > 0)) continue;
+      const at: number[] = [];
+      if (len < 90) at.push(len / 2);
+      else for (let d = 45; d < len; d += 90) at.push(d);
+      for (const d of at) {
+        const pt = pointAt(line, cum, d).point;
         if (!inTile(pt)) continue;
         const hit = water.nearest(pt, 30);
         if (!hit) continue;
         const wname = nameOfWater(pt, hit.data);
         const base = 4 + (hit.data.big ? 1.2 : hit.data.cls === 'canal' ? 0.8 : 0.3) + (isPath ? 0.7 : 0) - hit.dist / 60;
-        shore.push({ id: spotId('water', pt), name: wname || "Au bord de l'eau", kind: 'water', cat: 'nature', coord: pt, base, score: base });
+        // Une berge se longe : on la prend sur ~160 m de ce chemin.
+        const ends = segmentAround(line, cum, d, 80);
+        shore.push({ id: spotId('water', pt), name: wname || "Au bord de l'eau", kind: 'water', cat: 'nature', coord: pt, base, score: base, ends });
       }
     }
   }
@@ -352,6 +386,8 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
       const named = streetNames.nearest(mid, 30, (d) => BRIDGE_NAME.test(d.name));
       const wname = nameOfWater(mid, hit.data);
       const base = 4.5 + (f.props.class === 'path' ? 1 : 0) + (hit.data.big ? 1.2 : 0) + Math.min(1, len / 150);
+      // Un pont se traverse : on garde ses deux bouts (une rive, l'autre).
+      const ends = f.lines ? ([g[0], g[g.length - 1]] as [LngLat, LngLat]) : farthestPair(g);
       bridges.push({
         id: spotId('bridge', mid),
         name: named?.data.name || (wname ? `Pont sur ${wname}` : 'Pont'),
@@ -360,6 +396,7 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
         coord: mid,
         base,
         score: base,
+        ends: haversine(ends[0], ends[1]) >= 25 ? ends : undefined,
       });
     }
   }
@@ -400,7 +437,9 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
         const pt = pointAt(line, cum, d).point;
         if (!inTile(pt)) continue;
         const v = vibe.count(pt, 45);
-        add({ name, alt, kind: 'street', cat: 'urbain', coord: pt, vibe: v, base: 3 + Math.min(2.5, v * 0.13) });
+        // Une rue piétonne se parcourt : jusqu'à ~260 m autour du point.
+        const ends = segmentAround(line, cum, d, Math.min(130, len / 2));
+        add({ name, alt, kind: 'street', cat: 'urbain', coord: pt, vibe: v, base: 3 + Math.min(2.5, v * 0.13), ends });
       }
     }
   }

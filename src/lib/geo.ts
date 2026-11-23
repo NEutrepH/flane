@@ -159,6 +159,48 @@ export function bearingAt(coords: LngLat[], cum: number[], along: number, ahead 
   return bearing(a, b);
 }
 
+/**
+ * Bouts du trajet parcourus deux fois (aller-retour, même rue dans les deux sens, même pont deux fois).
+ * On échantillonne tous les `step` m ; deux échantillons à moins de `tol` m l'un de l'autre, éloignés
+ * de plus de `minGap` m le long du trajet et allant dans la même direction (ou l'inverse) sont un
+ * repassage. Recroiser son chemin à un carrefour ne compte pas. `pairs` donne les deux passages (en m).
+ */
+export function repeatedStretches(coords: LngLat[], cum: number[], tol = 14, minGap = 70, step = 10): { length: number; pairs: Array<[number, number]> } {
+  const total = cum[cum.length - 1] ?? 0;
+  if (coords.length < 2 || total < minGap * 2) return { length: 0, pairs: [] };
+  const proj = new LocalProj(coords[0]);
+  const samples: Array<{ p: LngLat; along: number; x: number; y: number }> = [];
+  for (let d = 0; d <= total; d += step) {
+    const p = pointAt(coords, cum, d).point;
+    const [x, y] = proj.toXY(p);
+    samples.push({ p, along: d, x, y });
+  }
+  const dir = (k: number): [number, number] => {
+    const a = samples[Math.max(0, k - 1)];
+    const b = samples[Math.min(samples.length - 1, k + 1)];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return [(b.x - a.x) / len, (b.y - a.y) / len];
+  };
+  const grid = new PointGrid<number>(proj, 25);
+  samples.forEach((s, i) => grid.add(s.p, i));
+  const flagged = new Set<number>();
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < samples.length; i++) {
+    let partner = -1;
+    const [ux, uy] = dir(i);
+    for (const { data: j } of grid.within(samples[i].p, tol)) {
+      if (j <= i || samples[j].along - samples[i].along <= minGap || (partner >= 0 && j >= partner)) continue;
+      const [vx, vy] = dir(j);
+      if (Math.abs(ux * vx + uy * vy) > 0.7) partner = j;
+    }
+    if (partner < 0) continue;
+    flagged.add(i);
+    flagged.add(partner);
+    pairs.push([samples[i].along, samples[partner].along]);
+  }
+  return { length: (flagged.size * step) / 2, pairs };
+}
+
 export function lineLength(line: LngLat[]): number {
   let d = 0;
   for (let i = 1; i < line.length; i++) d += haversine(line[i - 1], line[i]);
