@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useApp, type Prep, type Preview } from '../state/store';
-import { fitPlan, focusSpot, retry, setMinutes, setMode, startNav, togglePref } from '../state/controller';
+import { fitPlan, focusSpot, openStory, openTaste, retry, setMinutes, setMode, startNav, togglePref } from '../state/controller';
 import { CATEGORIES, CATEGORY_LABEL, KIND_LABEL, type Spot } from '../data/spots';
+import { traitsOf } from '../data/context';
 import type { Mode } from '../data/routing';
 import type { Plan, Prefs } from '../engine/planner';
+import { forYou, type Like } from '../engine/taste';
 import { clock, fmtDist } from '../lib/format';
 import { Ruler } from './Ruler';
 import { Attribution } from './Attribution';
-import { BikeIcon, CatIcon, PlayIcon, WalkIcon } from './icons';
+import { BikeIcon, CatIcon, HeartIcon, PlayIcon, WalkIcon } from './icons';
 import { useNow, useWide } from './hooks';
+import { useTaste } from './useTaste';
 
 const STEP_LABEL = ['Calcul du trajet le plus court', 'Lecture de la carte', 'Recherche des beaux coins', 'Photos et chemins', 'Prêt'];
 
@@ -42,6 +45,7 @@ export function PlanSheet() {
     })),
   );
   const wide = useWide();
+  const { taste, likes } = useTaste();
   const [open, setOpen] = useState(false);
   const expanded = wide || open;
   const now = useNow();
@@ -86,8 +90,13 @@ export function PlanSheet() {
       </p>
       <Ruler min={s.t0} max={s.tmax} value={s.minutes} onChange={setMinutes} disabled={!ready} />
       <PrepLine prep={s.prep} hint={ready && !scenic} />
+      {taste && ready && (
+        <button className="personal" onClick={openTaste}>
+          <HeartIcon size={14} /> Balade personnalisée · {likes.length} coup{likes.length > 1 ? 's' : ''} de cœur
+        </button>
+      )}
       {expanded && <Chips prefs={s.prefs} disabled={!ready} />}
-      <SpotStrip items={items} focus={s.focus} mini={!expanded} />
+      <SpotStrip items={items} focus={s.focus} mini={!expanded} mates={(spot) => forYou(traitsOf(spot), taste, likes)} />
       {expanded && focused && <Detail spot={focused} />}
       <div className="sheet__actions">
         <ModeSwitch mode={s.mode} />
@@ -159,26 +168,35 @@ function Chips({ prefs, disabled }: { prefs: Prefs; disabled: boolean }) {
   );
 }
 
-function SpotStrip({ items, focus, mini }: { items: Item[]; focus: string | null; mini: boolean }) {
+function SpotStrip({ items, focus, mini, mates }: { items: Item[]; focus: string | null; mini: boolean; mates: (s: Spot) => Like | null }) {
   if (!items.length) return null;
   return (
     <div className={`strip${mini ? ' strip--mini' : ''}`}>
       {items.map((it) => (
-        <SpotCard key={it.spot.id} item={it} focus={focus === it.spot.id} mini={mini} />
+        <SpotCard key={it.spot.id} item={it} focus={focus === it.spot.id} mini={mini} mate={mates(it.spot)} />
       ))}
     </div>
   );
 }
 
-function SpotCard({ item, focus, mini }: { item: Item; focus: boolean; mini: boolean }) {
+function SpotCard({ item, focus, mini, mate }: { item: Item; focus: boolean; mini: boolean; mate: Like | null }) {
   const { spot, n, eta, bonus } = item;
   const meta = `${bonus ? 'En chemin · ' : ''}${KIND_LABEL[spot.kind]}${eta != null ? ` · ${Math.max(1, Math.round(eta / 60))} min` : ''}`;
   return (
     <button
       className={`card cat-${spot.cat}${mini ? ' card--mini' : ''}${focus ? ' card--focus' : ''}${bonus ? ' card--bonus' : ''}`}
       data-spot={spot.id}
-      onClick={() => focusSpot(spot.id)}
+      onClick={() => {
+        focusSpot(spot.id);
+        if (eta != null) openStory(spot.id);
+      }}
+      title={mate ? `Pour toi : comme ${mate.name}` : undefined}
     >
+      {mate && (
+        <span className="card__foryou" aria-label={`Pour toi, comme ${mate.name}`}>
+          <HeartIcon size={12} />
+        </span>
+      )}
       <span className="duo">
         {spot.thumb ? (
           <img src={spot.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />

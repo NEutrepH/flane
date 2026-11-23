@@ -201,6 +201,17 @@ export function repeatedStretches(coords: LngLat[], cum: number[], tol = 14, min
   return { length: (flagged.size * step) / 2, pairs };
 }
 
+/** Cercle (polygone) de `radius` mètres autour d'un point. */
+export function circlePolygon(center: LngLat, radius: number, steps = 48): LngLat[] {
+  const proj = new LocalProj(center);
+  const ring: LngLat[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    ring.push(proj.toLngLat(Math.cos(a) * radius, Math.sin(a) * radius));
+  }
+  return ring;
+}
+
 export function lineLength(line: LngLat[]): number {
   let d = 0;
   for (let i = 1; i < line.length; i++) d += haversine(line[i - 1], line[i]);

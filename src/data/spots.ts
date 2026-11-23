@@ -15,6 +15,7 @@ import {
   type LngLat,
 } from '../lib/geo';
 import { readLayer, type Props } from './tiles';
+import { TileContext, type Traits } from './context';
 import type { VectorTile } from '@mapbox/vector-tile';
 import type { Article } from './wiki';
 
@@ -67,6 +68,8 @@ export interface Spot {
   link?: string;
   /** spot qui se traverse (pont) ou se longe (rue piétonne, berge) : ses deux bouts */
   ends?: [LngLat, LngLat];
+  /** ambiance mesurée autour du spot */
+  ctx?: Traits;
 }
 
 export const CATEGORY_LABEL: Record<Category, string> = {
@@ -444,6 +447,10 @@ export function extractSpots(vt: VectorTile, z: number, x: number, y: number): S
     }
   }
 
+  // Ambiance autour de chaque spot (eau, verdure, vieilles pierres…) : sert à proposer des lieux qui
+  // ressemblent à ceux que tu as aimés.
+  const ambience = new TileContext(vt, z, x, y);
+  for (const sp of out) sp.ctx = ambience.at(sp.coord);
   return out;
 }
 

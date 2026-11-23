@@ -68,7 +68,15 @@ export const CloseIcon = () => <Icon d="M13 13 L35 35 M35 13 L13 35" width={5} /
 export const LoopIcon = () => <Icon d="M38 22 A14 14 0 1 0 34 34 M38 12 V22 H28" />;
 export const PinIcon = () => <Icon d="M24 43 C24 43 10 29 10 19 A14 14 0 0 1 38 19 C38 29 24 43 24 43 Z M24 24 A5 5 0 1 0 24 14 A5 5 0 1 0 24 24" />;
 export const ClockIcon = () => <Icon d="M24 42 A18 18 0 1 0 24 6 A18 18 0 1 0 24 42 M24 14 V24 L31 29" />;
-export const PlayIcon = () => <Icon d="M15 9 L39 24 L15 39 Z" size={22} width={4.5} />;
+export function HeartIcon({ size = 26, filled = true }: { size?: number; filled?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={4} strokeLinejoin="round" aria-hidden>
+      <path d="M24 41 C24 41 6 30 6 17.5 C6 11 11 6.5 16.8 6.5 C20.2 6.5 22.7 8.4 24 11 C25.3 8.4 27.8 6.5 31.2 6.5 C37 6.5 42 11 42 17.5 C42 30 24 41 24 41 Z" />
+    </svg>
+  );
+}
+export const ShareIcon = () => <Icon d="M24 30 V6 M15 14 L24 5 L33 14 M10 22 V40 H38 V22" />;
+export const PlayIcon =() => <Icon d="M15 9 L39 24 L15 39 Z" size={22} width={4.5} />;
 export const TargetIcon =() => <Icon d="M24 38 A14 14 0 1 0 24 10 A14 14 0 1 0 24 38 M24 4 V12 M24 36 V44 M4 24 H12 M36 24 H44" />;
 export function SpeakerIcon({ on }: { on: boolean }) {
   return <Icon d={on ? 'M8 19 H16 L26 10 V38 L16 29 H8 Z M32 17 Q37 24 32 31 M37 12 Q46 24 37 36' : 'M8 19 H16 L26 10 V38 L16 29 H8 Z M33 19 L43 29 M43 19 L33 29'} />;

@@ -42,7 +42,17 @@ HTTPS : pour essayer dehors, il faut la mettre en ligne (GitHub Pages par exempl
    retenu 60 jours) et le calcul relancé ; si la durée s'écarte, la matrice est recalée. Mesure en vrai :
    `LIVE=1 npx vitest run tests/backtrack.live.test.ts`.
 6. **Navigation** (`src/engine/navigation.ts`) : position sur le tracé, prochaine instruction, temps
-   restant, sortie de route (recalcul), spots « tamponnés » au passage, voix optionnelle.
+   restant, sortie de route (recalcul), spots « tamponnés » au passage, voix optionnelle, frise de la
+   balade.
+7. **Coups de cœur** : pendant une balade, le bouton ♥ mesure l'ambiance des 110 m autour de toi
+   (`src/data/context.ts` : eau, verdure, vieilles pierres, vue, animation, calme, art de rue, à partir
+   des tuiles de la carte), la compare au reste de la balade pour isoler ce qui rend le lieu spécial, et
+   l'ajoute à ton goût (`src/engine/taste.ts`). Les balades suivantes favorisent les spots à l'ambiance
+   proche (jusqu'à ×1,9), marqués « pour toi ». Tout reste dans le téléphone (localStorage).
+8. **Écrans** : spots en « stories », écran « Ton goût », affiche de fin de balade à partager
+   (`src/ui/poster.ts`, image 1080 × 1350).
+
+Mesure de l'ambiance sur des lieux connus : `LIVE=1 npx vitest run tests/ambience.live.test.ts`.
 
 ## Limites connues
 

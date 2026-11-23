@@ -48,6 +48,16 @@ export async function searchPlaces(q: string, near: LngLat | undefined, signal?:
   });
 }
 
+/** Nom court d'un lieu pour un coup de cœur : le lieu s'il a un nom, sinon la rue (sans numéro), le quartier… */
+export async function placeLabel(coord: LngLat, signal?: AbortSignal): Promise<string | null> {
+  const u = `${PHOTON}/reverse?lat=${coord[1].toFixed(6)}&lon=${coord[0].toFixed(6)}&lang=fr&limit=1`;
+  const j = await fetchJSON<{ features?: PhotonFeature[] }>(u, { signal, timeout: 6000 });
+  const p = j.features?.[0]?.properties;
+  if (!p) return null;
+  const hasNumber = !!p.name && !!p.housenumber && p.name.includes(p.housenumber);
+  return (!hasNumber && p.name) || p.street || p.district || p.locality || p.city || null;
+}
+
 export async function reverseGeocode(coord: LngLat, signal?: AbortSignal): Promise<Place | null> {
   const u = `${PHOTON}/reverse?lat=${coord[1].toFixed(6)}&lon=${coord[0].toFixed(6)}&lang=fr&limit=1`;
   const j = await fetchJSON<{ features?: PhotonFeature[] }>(u, { signal, timeout: 8000 });

@@ -6,6 +6,7 @@ import type { Mode, Route } from '../data/routing';
 import type { Spot } from '../data/spots';
 import type { Plan, Prefs } from '../engine/planner';
 import type { NavState } from '../engine/navigation';
+import type { Like } from '../engine/taste';
 
 export type Phase = 'explore' | 'plan' | 'nav' | 'arrived';
 
@@ -43,7 +44,22 @@ export interface Trip {
   simulated: boolean;
 }
 
+/** Coup de cœur en cours d'analyse, puis son résultat. */
+export interface LikeCard {
+  id: string;
+  status: 'analysing' | 'done';
+  coord: LngLat;
+  like?: Like;
+}
+
+/** Écrans plein écran par-dessus la carte. */
+export type Screen = { kind: 'taste' } | { kind: 'story'; spotId: string };
+
 export interface AppState {
+  likes: Like[];
+  personalize: boolean;
+  likeCard: LikeCard | null;
+  screen: Screen | null;
   phase: Phase;
   mode: Mode;
   prefs: Prefs;
@@ -73,6 +89,10 @@ export interface AppState {
 }
 
 export const useApp = create<AppState>(() => ({
+  likes: prefGet<Like[]>('likes', []),
+  personalize: prefGet('personalize', true),
+  likeCard: null,
+  screen: null,
   phase: 'explore',
   mode: prefGet<Mode>('mode', 'walk'),
   prefs: prefGet<Prefs>('prefs', { nature: true, patrimoine: true, vue: true, urbain: true }),

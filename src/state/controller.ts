@@ -1,9 +1,11 @@
 // Chef d'orchestre : recherche → trajet le plus court → repérage des spots → curseur de durée → navigation.
 import type { Map as MLMap } from 'maplibre-gl';
-import { bboxOf, type LngLat } from '../lib/geo';
+import { bboxOf, haversine, type LngLat } from '../lib/geo';
+import { ambienceAt, TRAITS, traitsOf, type Traits } from '../data/context';
+import { signalOf, tasteBoost, tasteOf, type Like } from '../engine/taste';
 import { isAbort } from '../lib/http';
 import { prefGet, prefSet } from '../lib/cache';
-import { reverseGeocode, type Place } from '../data/geocode';
+import { placeLabel, reverseGeocode, type Place } from '../data/geocode';
 import { getRoute, SPEED, type Mode } from '../data/routing';
 import type { Category, Spot } from '../data/spots';
 import { wikiDetails } from '../data/wiki';
@@ -137,7 +139,7 @@ async function replan() {
   const ctrl = new AbortController();
   planCtrl = ctrl;
   const origin = effectiveOrigin();
-  const p = new Planner(origin.coord, s.dest.coord, s.mode, s.prefs, s.dest.country ?? origin.country);
+  const p = new Planner(origin.coord, s.dest.coord, s.mode, s.prefs, s.dest.country ?? origin.country, tasteFn());
   planner = p;
   set({ base: null, plan: null, preview: null, candidates: [], planLoading: true, focus: null, prep: { status: 'loading', step: 0 } });
   try {
@@ -454,6 +456,119 @@ export function newWalk() {
 
 export function recenter() {
   set({ follow: true });
+}
+
+// ---------- Coups de cœur et goût ----------
+
+/** Bonus de chaque spot selon les coups de cœur (neutre si la personnalisation est coupée). */
+function tasteFn(): (s: Spot) => number {
+  const s = get();
+  const taste = s.personalize ? tasteOf(s.likes) : null;
+  return taste ? (spot) => tasteBoost(traitsOf(spot), taste) : () => 1;
+}
+
+function averageTraits(list: Traits[]): Traits {
+  const out = {} as Traits;
+  for (const t of TRAITS) out[t] = list.reduce((acc, x) => acc + x[t], 0) / list.length;
+  return out;
+}
+
+async function placeName(p: LngLat): Promise<string> {
+  try {
+    return (await placeLabel(p)) ?? 'Ici';
+  } catch {
+    return 'Ici';
+  }
+}
+
+/**
+ * « J'adore ici » : on mesure l'ambiance autour de toi, on la compare au reste de la balade pour
+ * isoler ce qui rend le lieu spécial, et on l'ajoute à ton goût.
+ */
+export async function likeHere() {
+  const s = get();
+  const pos = s.user?.coord;
+  if (!pos) {
+    toast("On attend encore ta position pour savoir où tu es.");
+    return;
+  }
+  if (s.likeCard?.status === 'analysing') return;
+  const id = `like:${Date.now()}`;
+  set({ likeCard: { id, status: 'analysing', coord: pos } });
+  navigator.vibrate?.([20, 40, 20]);
+  try {
+    const started = performance.now();
+    const [ctx, place] = await Promise.all([ambienceAt(pos), placeName(pos)]);
+    const plan = get().plan;
+    const spots = plan ? [...plan.stops, ...plan.bonus] : [];
+    const baseline = spots.length ? averageTraits(spots.map((ps) => traitsOf(ps.spot))) : null;
+    const near = spots
+      .map((ps) => ({ ps, d: haversine(ps.spot.coord, pos) }))
+      .filter((x) => x.d < 60)
+      .sort((a, b) => a.d - b.d)[0]?.ps;
+    const like: Like = { id, coord: pos, ts: Date.now(), name: near?.spot.name ?? place, ctx, signal: signalOf(ctx, baseline), spotId: near?.spot.id };
+    // Laisse le temps de voir l'analyse se faire (même quand la tuile est déjà en cache).
+    const wait = 1400 - (performance.now() - started);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (get().likeCard?.id !== id) return;
+    const likes = [like, ...get().likes].slice(0, 200);
+    prefSet('likes', likes);
+    set({ likes, likeCard: { id, status: 'done', coord: pos, like } });
+    planner?.setTaste(tasteFn());
+    setTimeout(() => {
+      if (get().likeCard?.id === id) set({ likeCard: null });
+    }, 9000);
+  } catch (e) {
+    console.warn('[flane] analyse impossible', e);
+    set({ likeCard: null });
+    toast("Impossible d'analyser cet endroit pour l'instant.");
+  }
+}
+
+export function dismissLike() {
+  set({ likeCard: null });
+}
+
+function saveLikes(likes: Like[]) {
+  prefSet('likes', likes);
+  set({ likes });
+  planner?.setTaste(tasteFn());
+  if (get().phase === 'plan') setMinutes(get().minutes, true);
+}
+
+export function removeLike(id: string) {
+  saveLikes(get().likes.filter((l) => l.id !== id));
+}
+
+export function clearLikes() {
+  saveLikes([]);
+}
+
+export function togglePersonalize() {
+  const personalize = !get().personalize;
+  prefSet('personalize', personalize);
+  set({ personalize });
+  planner?.setTaste(tasteFn());
+  if (get().phase === 'plan') setMinutes(get().minutes, true);
+}
+
+export function openTaste() {
+  set({ screen: { kind: 'taste' } });
+}
+
+export function openStory(spotId: string) {
+  set({ screen: { kind: 'story', spotId } });
+}
+
+export function closeScreen() {
+  set({ screen: null });
+}
+
+/** Centre la carte sur un coup de cœur (depuis l'écran « Ton goût »). */
+export function showLike(like: Like) {
+  set({ screen: null });
+  map?.setPadding(NO_PAD);
+  map?.easeTo({ center: like.coord, zoom: 16.5, duration: 900 });
 }
 
 // ---------- Écran allumé, boussole, voix ----------

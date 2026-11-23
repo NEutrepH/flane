@@ -63,6 +63,8 @@ export function MapView() {
       const changed = (...keys: Array<keyof AppState>) => !p || keys.some((k) => p[k] !== s[k]);
 
       if (changed('candidates', 'phase')) layers.setCandidates(s.phase === 'plan' ? s.candidates : []);
+      if (changed('likes')) layers.setLikes(s.likes);
+      if (changed('likeCard')) layers.setLikeZone(s.likeCard?.coord ?? null, s.likeCard?.status === 'analysing');
       if (changed('plan', 'base', 'phase')) {
         layers.setGhost(s.phase === 'plan' && s.plan?.scenic ? s.base : null);
         if (s.phase === 'plan' || s.phase === 'explore') {
@@ -115,6 +117,7 @@ export function MapView() {
     });
     return () => {
       unsub();
+      layers.dispose();
       markers.clear();
       map.remove();
       registerMap(null);

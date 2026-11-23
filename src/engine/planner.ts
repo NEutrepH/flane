@@ -34,7 +34,7 @@ const LOCAL_LANG: Record<string, string> = {
   NL: 'nl', BE: 'nl', FR: 'fr', LU: 'fr', MC: 'fr', DE: 'de', AT: 'de', CH: 'de', ES: 'es', IT: 'it', PT: 'pt', PL: 'pl', CZ: 'cs', DK: 'da', SE: 'sv', NO: 'no',
 };
 // À changer dès que l'extraction des spots change : les tuiles déjà analysées sont réanalysées.
-const TILE_CACHE_VERSION = 'v4';
+const TILE_CACHE_VERSION = 'v5';
 /** Taille maximale de la matrice des temps (départ + arrivée + points des spots). */
 const MAX_NODES = 46;
 const ALL_ON: Prefs = { nature: true, patrimoine: true, vue: true, urbain: true };
@@ -103,10 +103,19 @@ export class Planner {
     readonly mode: Mode,
     private prefs: Prefs,
     readonly country?: string,
+    /** bonus personnel d'un spot selon les coups de cœur (1 = neutre) */
+    private taste: (s: Spot) => number = () => 1,
   ) {
     this.ab = haversine(origin, dest);
     this.loop = this.ab < 80;
     this.reversalWeight = mode === 'walk' ? 0.02 : 0.007;
+  }
+
+  /** Change le goût (coups de cœur ajoutés ou retirés en cours de route). */
+  setTaste(taste: (s: Spot) => number) {
+    this.taste = taste;
+    for (const s of this.all) s.score = scoreSpot(s) * taste(s);
+    this.sols.clear();
   }
 
   /** Règle l'importance des allers-retours (0 = ignorés) ; sert aussi aux mesures. */
@@ -176,7 +185,7 @@ export class Planner {
     let spots = dedupe(perTile.flat().map((s) => ({ ...s })));
     spots = enrichWithWiki(spots, articles, ['fr', 'en']);
     spots = spots.filter((s) => haversine(this.origin, s.coord) + haversine(s.coord, this.dest) <= S);
-    spots.forEach((s) => (s.score = scoreSpot(s)));
+    spots.forEach((s) => (s.score = scoreSpot(s) * this.taste(s)));
 
     this.all = spots;
     this.cands = this.selectCandidates(spots);
@@ -217,7 +226,7 @@ export class Planner {
     for (const s of this.cands) {
       // Un « lieu remarquable » que personne ne prend en photo n'est sans doute pas visible de la rue.
       if (s.kind === 'landmark' && s.photos !== undefined && s.photos < 2) s.base *= 0.55;
-      s.score = scoreSpot(s);
+      s.score = scoreSpot(s) * this.taste(s);
     }
     this.ready = true;
   }
@@ -300,7 +309,7 @@ export class Planner {
     const hit = this.sols.get(target);
     if (hit) return hit;
     const items = this.cands.map((c, i) => ({
-      value: scoreSpot(c, this.prefs) * Math.min(this.penalty.get(c.id) ?? 1, cacheGet(`c:dead:${c.id}`) ? 0.5 : 1),
+      value: scoreSpot(c, this.prefs) * this.taste(c) * Math.min(this.penalty.get(c.id) ?? 1, cacheGet(`c:dead:${c.id}`) ? 0.5 : 1),
       kind: c.kind,
       cat: c.cat,
       name: c.name,

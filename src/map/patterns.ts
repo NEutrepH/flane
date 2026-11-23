@@ -4,6 +4,7 @@ const PATTERNS: Record<string, { color: string; spacing: number; r: number }> = 
   'dots-green': { color: '#00A95C', spacing: 6, r: 1.15 },
   'dots-green-dense': { color: '#00A95C', spacing: 4.5, r: 1.2 },
   'dots-blue': { color: '#0078BF', spacing: 5, r: 0.85 },
+  'dots-pink': { color: '#FF48B0', spacing: 4.5, r: 1.25 },
 };
 
 /** Tuile de motif répétable, rangées décalées comme une trame d'imprimerie. */
