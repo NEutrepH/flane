@@ -1,0 +1,52 @@
+:root {
+  /* Papier et encres riso */
+  --paper: #f3eee3;
+  --paper-2: #ebe4d5;
+  --paper-3: #e1d8c4;
+  --ink: #17162a;
+  --ink-2: rgba(23, 22, 42, 0.68);
+  --ink-3: rgba(23, 22, 42, 0.42);
+  --line: rgba(23, 22, 42, 0.16);
+  --pink: #ff48b0;
+  --pink-deep: #d81f86;
+  --blue: #0078bf;
+  --green: #00a95c;
+  --yellow: #ffe800;
+  --orange: #ff6c2f;
+  --purple: #765ba7;
+
+  /* Une encre par ambiance */
+  --c-nature: var(--green);
+  --c-patrimoine: var(--purple);
+  --c-vue: var(--blue);
+  --c-urbain: var(--orange);
+
+  --f-display: 'Anybody', 'Arial Black', system-ui, sans-serif;
+  --f-body: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --f-mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --r: 16px;
+  --r-lg: 24px;
+  --gutter: 12px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: light;
+}
+
+.cat-nature {
+  --c: var(--c-nature);
+  --on-c: var(--ink);
+}
+.cat-patrimoine {
+  --c: var(--c-patrimoine);
+  --on-c: var(--paper);
+}
+.cat-vue {
+  --c: var(--c-vue);
+  --on-c: var(--paper);
+}
+.cat-urbain {
+  --c: var(--c-urbain);
+  --on-c: var(--ink);
+}
